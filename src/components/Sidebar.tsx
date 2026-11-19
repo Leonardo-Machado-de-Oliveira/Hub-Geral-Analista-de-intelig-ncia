@@ -1,8 +1,11 @@
+import { Fragment } from 'react';
 import {
   Activity,
+  Building2,
   FilePlus2,
   History,
   LayoutDashboard,
+  PencilLine,
   Search,
   Settings,
   ShieldCheck,
@@ -21,16 +24,26 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
+type NavGroup = 'monitor' | 'solucoes';
+
+const GROUP_LABELS: Record<NavGroup, string> = {
+  monitor: 'Operações e Monitoramento',
+  solucoes: 'Soluções via API',
+};
+
 const NAV_ITEMS: Array<{
   id: NavSection;
   label: string;
   icon: typeof LayoutDashboard;
+  group: NavGroup;
 }> = [
-  { id: 'overview', label: 'Visão geral', icon: LayoutDashboard },
-  { id: 'generate', label: 'Gerar boleto', icon: FilePlus2 },
-  { id: 'query', label: 'Consultar título', icon: Search },
-  { id: 'history', label: 'Histórico de operações', icon: History },
-  { id: 'diagnostics', label: 'Diagnósticos e logs', icon: Activity },
+  { id: 'overview', label: 'Visão geral', icon: LayoutDashboard, group: 'monitor' },
+  { id: 'generate', label: 'Gerar boleto', icon: FilePlus2, group: 'monitor' },
+  { id: 'query', label: 'Consultar título', icon: Search, group: 'monitor' },
+  { id: 'history', label: 'Histórico de operações', icon: History, group: 'monitor' },
+  { id: 'diagnostics', label: 'Diagnósticos e logs', icon: Activity, group: 'monitor' },
+  { id: 'bulk_valor', label: 'Alterar valores em massa', icon: PencilLine, group: 'solucoes' },
+  { id: 'bulk_cnpj', label: 'Alterar CNPJ em massa', icon: Building2, group: 'solucoes' },
 ];
 
 export function Sidebar({
@@ -57,7 +70,7 @@ export function Sidebar({
               Safeweb ERP
             </div>
             <div className="text-[11px] text-sky-200/80 truncate">
-              Plataforma de Títulos
+              Hub de Soluções via API
             </div>
           </div>
         </div>
@@ -73,15 +86,18 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto" aria-label="Menu principal">
-        <div className="px-3 pb-2 text-[11px] font-medium text-sky-200/60">
-          Operações e Monitoramento
-        </div>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.map((item, idx) => {
           const Icon = item.icon;
           const active = activeSection === item.id;
+          const showGroupHeading = idx === 0 || NAV_ITEMS[idx - 1].group !== item.group;
           return (
+            <Fragment key={item.id}>
+            {showGroupHeading && (
+              <div className={`px-3 pb-2 text-[11px] font-medium text-sky-200/60 ${idx === 0 ? '' : 'pt-4'}`}>
+                {GROUP_LABELS[item.group]}
+              </div>
+            )}
             <button
-              key={item.id}
               type="button"
               onClick={() => {
                 onNavigate(item.id);
@@ -100,6 +116,7 @@ export function Sidebar({
               />
               <span className="truncate">{item.label}</span>
             </button>
+            </Fragment>
           );
         })}
       </nav>
