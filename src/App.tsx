@@ -49,6 +49,7 @@ import { Sidebar } from '@/src/components/Sidebar';
 import { TopBar } from '@/src/components/TopBar';
 import { OverviewPage } from '@/src/components/OverviewPage';
 import { OrderOperationPage, type FormStateValues } from '@/src/components/OrderOperationPage';
+import { BulkCorrectionPage } from '@/src/components/BulkCorrectionPage';
 import { HistoryPage } from '@/src/components/HistoryPage';
 import { DiagnosticsPage } from '@/src/components/DiagnosticsPage';
 import { OperationDetailsDrawer } from '@/src/components/OperationDetailsDrawer';
@@ -1162,6 +1163,14 @@ export default function App() {
               onOpenBoleto={(link) => openBoletoLink(link, notify)}
               onDownloadBoleto={(link, xPed) => downloadBoletoPdf(link, xPed, notify)}
               toFormInputs={toFormInputs}
+            />
+          )}
+
+          {(activeSection === 'bulk_valor' || activeSection === 'bulk_cnpj') && (
+            <BulkCorrectionPage
+              mode={activeSection}
+              config={config}
+              onNotify={notify}
             />
           )}
 

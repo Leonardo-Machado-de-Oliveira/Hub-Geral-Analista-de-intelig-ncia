@@ -1,4 +1,11 @@
-export type NavSection = 'overview' | 'generate' | 'query' | 'history' | 'diagnostics';
+export type NavSection =
+  | 'overview'
+  | 'generate'
+  | 'query'
+  | 'bulk_valor'
+  | 'bulk_cnpj'
+  | 'history'
+  | 'diagnostics';
 
 export interface CompyConfig {
   endpoint: string;

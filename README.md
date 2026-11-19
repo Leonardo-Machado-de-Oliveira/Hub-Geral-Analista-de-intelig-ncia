@@ -65,3 +65,58 @@ Aplicação web autossuficiente (HTML + Bootstrap 5 + Font Awesome + JavaScript 
 npm install
 npm run dev
 ```
+
+---
+
+## Hub de Soluções via API
+
+O hub centraliza operações administrativas integradas ao Compy. Menu principal:
+
+| Seção | Tipo | Descrição |
+| --- | --- | --- |
+| Gerar boleto / Consultar título / Histórico / Diagnósticos | Monitoramento | Emissão de títulos já existente |
+| Alterar valores em massa (`bulk_valor`) | Solução via API | Retificação de valor de vários pedidos |
+| Alterar CNPJ em massa (`bulk_cnpj`) | Solução via API | Troca do CNPJ de faturamento de vários pedidos |
+
+### Arquivos novos e alterados
+
+- **Novo** `src/lib/bulkCorrecao.ts`: parser da lista, builders de payload, runner sequencial em lote e geração do log JSON.
+- **Novo** `src/components/BulkCorrectionPage.tsx`: tela das duas soluções (mesmo layout das demais telas).
+- **Alterados:** `src/types/compy.ts` (`NavSection` com `bulk_valor` e `bulk_cnpj`), `src/components/Sidebar.tsx` (grupo "Soluções via API" e subtítulo do hub), `src/components/TopBar.tsx` (títulos), `src/App.tsx` (renderização da nova página).
+
+### Rotas e endpoints
+
+- **Nenhuma rota nova no servidor Express.** As chamadas seguem o padrão do projeto: o navegador chama o Compy diretamente via `callCompy`, usando `buildCompyUrl(config, neuron)`.
+- **Neurons utilizados:**
+  - `ws.Pedido` — consulta do pedido (somente em `bulk_valor`).
+  - `ws.SavePedido` — retificação de valor (`bulk_valor`) e troca do CNPJ de faturamento (`bulk_cnpj`).
+- **Dependências:** nenhuma nova (usa as já existentes em `package.json`).
+
+### Formato de entrada
+
+- `bulk_valor`: uma linha por pedido, `xPed;valor` (ex.: `1011673416;150,00`).
+- `bulk_cnpj`: uma linha por pedido, `xPed;CNPJ` (ex.: `1011632133;05054960000158`).
+- Separadores aceitos: `;` ou tabulação. Limite de 500 linhas por lote.
+
+### Lógica por operação (conforme logs de referência `disparos-correcao_valor` e `disparos-correcao_cliente`)
+
+1. **Alteração de valor (`correcao:valor`)**, por pedido:
+   - `ws.Pedido {xPed}` (consulta). Se falhar, o pedido não é alterado.
+   - Monta o `pedidoList[0]` a partir do pedido consultado, com `vTot`, `vUnCom` e `vProd` = novo valor, `faturar: false` e `codigoObjetivo: "02"`.
+   - `ws.SavePedido {pedidoList:[...], sincrono:true}` (etapa "retificação").
+   - Restrição: somente pedidos com 1 item e `qCom = 1`. Outros casos são recusados sem envio.
+2. **Alteração de CNPJ de faturamento (`correcao:cliente`)**, por pedido:
+   - `ws.SavePedido {pedidoList:[{xPed, cnpjFaturamento}], sincrono:true}`, sem consulta prévia (conforme o log de referência).
+
+Execução sequencial, uma chamada por vez. Botão **Parar** interrompe o lote entre itens.
+
+### Log do lote
+
+Ao final, é possível baixar `disparos-<fluxo>-<batchId>.json`, com um registro por chamada no mesmo formato dos arquivos de referência (`flowId`, `batchId`, `itemIndex` (base 0), `itemKey`, `step`, `requestBody`, `responseBody`, `httpStatus`, `durationMs`, `transport`, etc.). O campo `id` é `null`, pois o hub não recebe o id de log do servidor.
+
+### Validação e segurança
+
+- xPed com `[A-Za-z0-9_\-.+]`, sem repetição na lista.
+- Valores > 0 (aceita formato BR `1.234,56`).
+- CNPJ com 14 dígitos e dígito verificador válido.
+- A execução só habilita após a confirmação explícita do checkbox.
