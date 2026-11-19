@@ -136,9 +136,22 @@ export function parseBulkInput(text: string, flow: BulkFlowId): BulkParseResult 
 // =========================================================================
 
 /**
+ * Divide o valor total em partes iguais, em centavos. O resto vai para os últimos itens.
+ * Ex.: 67,00 em 3 partes → [22,33; 22,33; 22,34]
+ */
+export function dividirValorEmPartes(total: number, partes: number): number[] {
+  const totalCent = Math.round(total * 100);
+  const base = Math.floor(totalCent / partes);
+  const resto = totalCent - base * partes;
+  return Array.from({ length: partes }, (_, i) => (base + (i >= partes - resto ? 1 : 0)) / 100);
+}
+
+/**
  * Monta a retificação de valor a partir do pedido consultado (ws.Pedido),
  * no mesmo formato do log de referência.
- * Restrição: somente pedidos com 1 item e qCom = 1 (é o caso coberto pelo log).
+ * O valor informado é o total do pedido. Com mais de um item, o total é dividido
+ * igualmente entre os itens (centavos extras vão para os últimos).
+ * Restrição: cada item deve ter qCom = 1.
  */
 export function buildCorrecaoValorPayload(
   xPed: string,
@@ -153,17 +166,22 @@ export function buildCorrecaoValorPayload(
   const prodList = Array.isArray(pedido.prodList)
     ? (pedido.prodList as Array<Record<string, unknown>>)
     : [];
-  if (prodList.length !== 1) {
-    throw new Error(
-      `Pedido com ${prodList.length} itens; a correção de valor suporta somente pedidos com 1 item.`
-    );
+  if (prodList.length === 0) {
+    throw new Error('Pedido sem itens na resposta do Compy.');
   }
-  const prod = prodList[0];
-  if (Number(prod.qCom) !== 1) {
-    throw new Error(`Quantidade ${String(prod.qCom)} diferente de 1; a correção de valor suporta somente qCom = 1.`);
+  for (const prod of prodList) {
+    if (Number(prod.qCom) !== 1) {
+      throw new Error(
+        `Item ${String(prod.cProd)} com quantidade ${String(prod.qCom)}; a correção de valor suporta somente qCom = 1 em cada item.`
+      );
+    }
   }
 
   const valor = Number(novoValor.toFixed(2));
+  const partes = dividirValorEmPartes(valor, prodList.length);
+  if (partes.some((p) => p <= 0)) {
+    throw new Error(`Valor ${valor} insuficiente para dividir entre ${prodList.length} itens.`);
+  }
   const payload: Record<string, unknown> = {};
 
   if (pedido.cpf !== undefined && pedido.cpf !== null) {
@@ -180,7 +198,12 @@ export function buildCorrecaoValorPayload(
   payload.dEmi = pedido.dEmi;
   payload.vTot = valor;
   payload.limiteDeCredito = pedido.limiteDeCredito;
-  payload.prodList = [{ cProd: prod.cProd, qCom: prod.qCom, vUnCom: valor, vProd: valor }];
+  payload.prodList = prodList.map((prod, i) => ({
+    cProd: prod.cProd,
+    qCom: prod.qCom,
+    vUnCom: partes[i],
+    vProd: partes[i],
+  }));
   payload.dupList = Array.isArray(pedido.dupList) ? pedido.dupList : [];
   payload.bloqList = Array.isArray(pedido.bloqList) ? pedido.bloqList : [];
   payload.faturar = false;

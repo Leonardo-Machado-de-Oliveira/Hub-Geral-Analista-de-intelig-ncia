@@ -102,9 +102,10 @@ O hub centraliza operações administrativas integradas ao Compy. Menu principal
 
 1. **Alteração de valor (`correcao:valor`)**, por pedido:
    - `ws.Pedido {xPed}` (consulta). Se falhar, o pedido não é alterado.
-   - Monta o `pedidoList[0]` a partir do pedido consultado, com `vTot`, `vUnCom` e `vProd` = novo valor, `faturar: false` e `codigoObjetivo: "02"`.
+   - Monta o `pedidoList[0]` a partir do pedido consultado, com `vTot` = novo valor total, `faturar: false` e `codigoObjetivo: "02"`.
+   - Com mais de um item, o total é dividido igualmente entre os itens (`dividirValorEmPartes`), em centavos. O resto vai para os últimos itens. Exemplo: 67,00 em 3 itens → 22,33 / 22,33 / 22,34. Em cada item, `vUnCom` = `vProd` = parcela.
    - `ws.SavePedido {pedidoList:[...], sincrono:true}` (etapa "retificação").
-   - Restrição: somente pedidos com 1 item e `qCom = 1`. Outros casos são recusados sem envio.
+   - Restrição: cada item do pedido deve ter `qCom = 1`. Caso contrário, o pedido é recusado sem envio.
 2. **Alteração de CNPJ de faturamento (`correcao:cliente`)**, por pedido:
    - `ws.SavePedido {pedidoList:[{xPed, cnpjFaturamento}], sincrono:true}`, sem consulta prévia (conforme o log de referência).
 

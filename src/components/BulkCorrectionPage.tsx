@@ -30,7 +30,7 @@ const COPY: Record<
       'Para cada pedido: consulta o pedido (ws.Pedido), monta a retificação com o novo valor e grava (ws.SavePedido).',
     placeholder: '1011673416;150,00\n1011632133;1.234,56',
     confirmLabel: 'Confirmo a alteração de valor dos pedidos listados no Compy.',
-    helper: 'Formato por linha: xPed;valor (ex.: 1011673416;150,00). Somente pedidos com 1 item e quantidade 1.',
+    helper: 'Formato por linha: xPed;valor (ex.: 1011673416;150,00). O valor é o total do pedido e é dividido igualmente entre os itens. Cada item deve ter quantidade 1.',
   },
   bulk_cnpj: {
     title: 'Alteração de CNPJ em massa',
