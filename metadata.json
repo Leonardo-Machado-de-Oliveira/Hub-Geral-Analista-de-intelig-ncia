@@ -1,0 +1,8 @@
+{
+  "name": "Hub Geral Analista de inteligência ",
+  "description": "Aplicação web completa para geração e emissão de títulos financeiros (Conta a Receber), empenhos e taxas de epjintegrada com a API ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
