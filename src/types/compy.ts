@@ -3,8 +3,7 @@ export type NavSection =
   | 'generate'
   | 'query'
   | 'midia_avulsa'
-  | 'bulk_valor'
-  | 'bulk_cnpj'
+  | 'bulk_correcao'
   | 'history'
   | 'diagnostics';
 

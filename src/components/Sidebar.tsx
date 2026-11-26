@@ -1,7 +1,6 @@
 import { Fragment } from 'react';
 import {
   Activity,
-  Building2,
   FilePlus2,
   History,
   Package,
@@ -44,8 +43,7 @@ const NAV_ITEMS: Array<{
   { id: 'history', label: 'Histórico de operações', icon: History, group: 'monitor' },
   { id: 'diagnostics', label: 'Diagnósticos e logs', icon: Activity, group: 'monitor' },
   { id: 'midia_avulsa', label: 'Venda avulsa de mídias', icon: Package, group: 'solucoes' },
-  { id: 'bulk_valor', label: 'Alterar valores em massa', icon: PencilLine, group: 'solucoes' },
-  { id: 'bulk_cnpj', label: 'Alterar CNPJ em massa', icon: Building2, group: 'solucoes' },
+  { id: 'bulk_correcao', label: 'Correção de pedidos em massa', icon: PencilLine, group: 'solucoes' },
 ];
 
 export function Sidebar({

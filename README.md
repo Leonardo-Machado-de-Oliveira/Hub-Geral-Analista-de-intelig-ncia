@@ -75,28 +75,34 @@ O hub centraliza operações administrativas integradas ao Compy. Menu principal
 | Seção | Tipo | Descrição |
 | --- | --- | --- |
 | Gerar boleto / Consultar título / Histórico / Diagnósticos | Monitoramento | Emissão de títulos já existente |
-| Alterar valores em massa (`bulk_valor`) | Solução via API | Retificação de valor de vários pedidos |
-| Alterar CNPJ em massa (`bulk_cnpj`) | Solução via API | Troca do CNPJ de faturamento de vários pedidos |
+| Correção de pedidos em massa (`bulk_correcao`) | Solução via API | Altera valor e/ou CPF/CNPJ de faturamento de vários pedidos |
 
 ### Arquivos novos e alterados
 
 - **Novo** `src/lib/bulkCorrecao.ts`: parser da lista, builders de payload, runner sequencial em lote e geração do log JSON.
 - **Novo** `src/components/BulkCorrectionPage.tsx`: tela das duas soluções (mesmo layout das demais telas).
-- **Alterados:** `src/types/compy.ts` (`NavSection` com `bulk_valor` e `bulk_cnpj`), `src/components/Sidebar.tsx` (grupo "Soluções via API" e subtítulo do hub), `src/components/TopBar.tsx` (títulos), `src/App.tsx` (renderização da nova página).
+- **Alterados:** `src/types/compy.ts` (`NavSection` com `bulk_correcao`), `src/components/Sidebar.tsx` (grupo "Soluções via API" e subtítulo do hub), `src/components/TopBar.tsx` (títulos), `src/App.tsx` (renderização da nova página).
 
 ### Rotas e endpoints
 
 - **Nenhuma rota nova no servidor Express.** As chamadas seguem o padrão do projeto: o navegador chama o Compy diretamente via `callCompy`, usando `buildCompyUrl(config, neuron)`.
 - **Neurons utilizados:**
-  - `ws.Pedido` — consulta do pedido (somente em `bulk_valor`).
-  - `ws.SavePedido` — retificação de valor (`bulk_valor`) e troca do CNPJ de faturamento (`bulk_cnpj`).
+  - `ws.Pedido` — consulta do pedido (somente quando a linha altera valor).
+  - `ws.SavePedido` — retificação de valor e troca do CPF/CNPJ de faturamento.
 - **Dependências:** nenhuma nova (usa as já existentes em `package.json`).
 
 ### Formato de entrada
 
-- `bulk_valor`: uma linha por pedido, `xPed;valor` (ex.: `1011673416;150,00`).
-- `bulk_cnpj`: uma linha por pedido, `xPed;CNPJ` (ex.: `1011632133;05054960000158`).
-- Separadores aceitos: `;` ou tabulação. Limite de 500 linhas por lote.
+Formato unificado, uma linha por pedido: `pedido;valor;CPF/CNPJ`. Separadores aceitos: `;`, `:` ou tabulação. Valor e documento são opcionais, mas cada linha precisa ter pelo menos um. Limite de 500 linhas por lote.
+
+| Linha | Efeito |
+| --- | --- |
+| `1000:70;86933914020` | valor 70,00 e CPF de faturamento |
+| `1000;70` | só valor |
+| `1000;;05054960000158` | só CNPJ de faturamento |
+| `1000;05054960000158` | só CNPJ (11 ou 14 dígitos sem vírgula são tratados como documento) |
+
+Por pedido, primeiro o valor e depois o documento. Se o valor falhar, o documento não é alterado. Situação: **sucesso** (tudo aplicado), **parcial** (valor aplicado, documento falhou) ou **erro**. CPF usa `cpfFaturamento`; CNPJ usa `cnpjFaturamento`.
 
 ### Lógica por operação (conforme logs de referência `disparos-correcao_valor` e `disparos-correcao_cliente`)
 

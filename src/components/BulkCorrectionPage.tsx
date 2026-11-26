@@ -6,51 +6,29 @@ import {
   buildBulkLogJson,
   parseBulkInput,
   runBulkCorrecao,
-  type BulkFlowId,
   type BulkItemResult,
   type BulkLogEntry,
 } from '@/src/lib/bulkCorrecao';
 import { triggerBlobDownload } from '@/src/lib/compy';
 import { OperationStatusTag } from '@/src/components/StatusPill';
 
-export type BulkMode = 'bulk_valor' | 'bulk_cnpj';
-
-const FLOW_BY_MODE: Record<BulkMode, BulkFlowId> = {
-  bulk_valor: 'correcao:valor',
-  bulk_cnpj: 'correcao:cliente',
-};
-
-const COPY: Record<
-  BulkMode,
-  { title: string; description: string; placeholder: string; confirmLabel: string; helper: string }
-> = {
-  bulk_valor: {
-    title: 'Alteração de valores em massa',
-    description:
-      'Para cada pedido: consulta o pedido (ws.Pedido), monta a retificação com o novo valor e grava (ws.SavePedido).',
-    placeholder: '1011673416;150,00\n1011632133;1.234,56',
-    confirmLabel: 'Confirmo a alteração de valor dos pedidos listados no Compy.',
-    helper: 'Formato por linha: xPed;valor (ex.: 1011673416;150,00). O valor é o total do pedido e é dividido igualmente entre os itens. Cada item deve ter quantidade 1.',
-  },
-  bulk_cnpj: {
-    title: 'Alteração de CNPJ em massa',
-    description:
-      'Para cada pedido: grava o novo CNPJ de faturamento diretamente no pedido (ws.SavePedido).',
-    placeholder: '1011632133;05.054.960/0001-58',
-    confirmLabel: 'Confirmo a alteração de CNPJ de faturamento dos pedidos listados no Compy.',
-    helper: 'Formato por linha: xPed;CNPJ (ex.: 1011632133;05054960000158). Somente CNPJ válido.',
-  },
+const COPY = {
+  title: 'Correção de pedidos em massa',
+  description:
+    'Altera valor e/ou CPF/CNPJ de faturamento de vários pedidos. Valor: consulta o pedido (ws.Pedido) e grava a retificação (ws.SavePedido). CPF/CNPJ: grava o documento de faturamento (ws.SavePedido).',
+  placeholder: '1000:70;86933914020\n1011673416;150,00\n1011632133;;05.054.960/0001-58',
+  confirmLabel: 'Confirmo as alterações dos pedidos listados no Compy.',
+  helper:
+    'Uma linha por pedido: pedido;valor;CPF/CNPJ (separe com ; ou :). Valor e documento são opcionais, mas pelo menos um é obrigatório. Ex.: 1000:70;86933914020 · 1000;70 · 1000;;05054960000158. O valor é o total do pedido e é dividido igualmente entre os itens (cada item com quantidade 1).',
 };
 
 interface BulkCorrectionPageProps {
-  mode: BulkMode;
   config: CompyConfig;
   onNotify: (message: string, variant?: ToastItem['variant']) => void;
 }
 
-export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPageProps) {
-  const flow = FLOW_BY_MODE[mode];
-  const copy = COPY[mode];
+export function BulkCorrectionPage({ config, onNotify }: BulkCorrectionPageProps) {
+  const copy = COPY;
   const host = (() => {
     try {
       return new URL(config.endpoint).host;
@@ -69,7 +47,7 @@ export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPag
   const [interrompido, setInterrompido] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const parsed = useMemo(() => parseBulkInput(text, flow), [text, flow]);
+  const parsed = useMemo(() => parseBulkInput(text), [text]);
   const hasInput = text.trim() !== '';
   const canRun = !running && parsed.errors.length === 0 && parsed.items.length > 0 && confirmado;
 
@@ -87,7 +65,6 @@ export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPag
 
     try {
       const out = await runBulkCorrecao({
-        flow,
         items: parsed.items,
         config,
         signal: controller.signal,
@@ -102,7 +79,7 @@ export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPag
 
       const ok = out.results.filter((r) => r.status === 'sucesso').length;
       onNotify(
-        `Lote concluído: ${ok} de ${out.results.length} pedido(s) alterado(s).`,
+        `Lote concluído: ${ok} de ${out.results.length} pedido(s) corrigido(s).`,
         ok === out.results.length && !out.interrompido ? 'success' : 'warning'
       );
     } catch {
@@ -121,11 +98,12 @@ export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPag
     if (!batchId || entries.length === 0) return;
     const json = buildBulkLogJson(entries);
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-    triggerBlobDownload(blob, `disparos-${flow.replace(':', '_')}-${batchId}.json`);
+    triggerBlobDownload(blob, `disparos-correcao_pedidos-${batchId}.json`);
   };
 
   const okCount = results.filter((r) => r.status === 'sucesso').length;
   const errCount = results.filter((r) => r.status === 'erro').length;
+  const parcialCount = results.filter((r) => r.status === 'parcial').length;
 
   return (
     <div className="space-y-6">
@@ -228,7 +206,7 @@ export function BulkCorrectionPage({ mode, config, onNotify }: BulkCorrectionPag
             <div>
               <h2 className="font-display text-base font-bold text-slate-900">Resultado do lote</h2>
               <p className="mt-0.5 text-xs text-slate-500 font-mono tabular-nums">
-                {progress.done}/{progress.total} processado(s) · {okCount} sucesso · {errCount} erro
+                {progress.done}/{progress.total} processado(s) · {okCount} sucesso{parcialCount > 0 ? ` · ${parcialCount} parcial` : ''} · {errCount} erro
                 {interrompido && ' · interrompido'}
               </p>
             </div>

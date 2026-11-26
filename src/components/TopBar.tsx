@@ -14,8 +14,7 @@ const SECTION_TITLES: Record<NavSection, string> = {
   generate: 'Gerar boleto',
   query: 'Consultar título',
   midia_avulsa: 'Venda avulsa de mídias',
-  bulk_valor: 'Alterar valores em massa',
-  bulk_cnpj: 'Alterar CNPJ em massa',
+  bulk_correcao: 'Correção de pedidos em massa',
   history: 'Histórico de operações',
   diagnostics: 'Diagnósticos e logs',
 };
