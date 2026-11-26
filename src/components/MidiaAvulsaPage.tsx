@@ -15,6 +15,7 @@ import {
 import {
   MIDIA_PRODUTOS,
   buildMidiaSavePedidoPayload,
+  getMidiaCodigoObjetivo,
   calcularComposicao,
   encontrarProximoMidiaLivre,
   getMidiaProduto,
@@ -146,7 +147,7 @@ export function MidiaAvulsaPage({
   };
 
   const validar = () =>
-    validateMidiaPedido({ xPed, docInfo, produto, composicao, vencYmd });
+    validateMidiaPedido({ xPed, docInfo, produto, composicao, vencYmd, params });
 
   const handleSubmit = () => {
     if (isRunning || buscandoNumero) return;
@@ -154,7 +155,14 @@ export function MidiaAvulsaPage({
     setErrors(val.errors);
     if (!val.ok || !produto || !composicao || numero === null) return;
 
-    const savePayload = buildMidiaSavePedidoPayload({ xPed, docInfo, composicao, vencYmd, params });
+    const savePayload = buildMidiaSavePedidoPayload({
+      xPed,
+      produtoId: produto.id,
+      docInfo,
+      composicao,
+      vencYmd,
+      params,
+    });
     const numeroUsado = numero;
 
     // FormInputs mínimo exigido pelo fluxo compartilhado (pré-checagem, conferência, título).
@@ -168,7 +176,7 @@ export function MidiaAvulsaPage({
       cProdRaw: String(composicao.itens[0].cProd),
       qCom: 1,
       qComRaw: '1',
-      codigoObjetivo: params.codigoObjetivo,
+      codigoObjetivo: getMidiaCodigoObjetivo(produto.id, params),
       codigoClassificacao: '',
       codigoCobranca: params.codigoCobranca,
       faturar: false,
@@ -350,7 +358,7 @@ export function MidiaAvulsaPage({
               onClick={() => setShowAvancado((v) => !v)}
               className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-slate-700 cursor-pointer"
             >
-              Configurações (objetivo 02 · cobrança 1 · preços opcionais)
+              Configurações (objetivo 02 · leitora: venda e-commerce · cobrança 1 · preços opcionais)
               {showAvancado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
             {showAvancado && (
@@ -381,13 +389,24 @@ export function MidiaAvulsaPage({
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-xs text-slate-700">
-                    <span className="block font-semibold mb-1">codigoObjetivo</span>
+                    <span className="block font-semibold mb-1">codigoObjetivo · TOKEN e CARTÃO <span className="font-normal">(Prestação de serviço e-commerce)</span></span>
                     <input
                       type="text"
                       value={params.codigoObjetivo}
                       onChange={(e) => handleParamChange('codigoObjetivo', e.target.value)}
                       disabled={isRunning}
                       placeholder="02"
+                      className={`${inputCls} font-mono`}
+                    />
+                  </label>
+                  <label className="text-xs text-slate-700">
+                    <span className="block font-semibold mb-1">codigoObjetivo · LEITORA <span className="font-normal">(Venda e-commerce)</span></span>
+                    <input
+                      type="text"
+                      value={params.codigoObjetivoLeitora}
+                      onChange={(e) => handleParamChange('codigoObjetivoLeitora', e.target.value)}
+                      disabled={isRunning}
+                      placeholder="Código de Venda e-commerce"
                       className={`${inputCls} font-mono`}
                     />
                   </label>

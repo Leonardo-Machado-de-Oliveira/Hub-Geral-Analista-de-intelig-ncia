@@ -163,7 +163,8 @@ O resultado vai para o histórico com o modo "Mídia avulsa · PRODUTO".
 ### Preço, objetivo e cobrança
 
 - **Padrão:** o pedido vai só com `cProd` e `qCom`, e o Compy aplica a própria tabela de preços (como na tela manual). O valor aparece na conferência.
-- **Objetivo e cobrança:** via API o Compy não aplica objetivo sozinho (erro "O objetivo para serviço não foi encontrado"). Padrões no código: `codigoObjetivo` = `02` e `codigoCobranca` = `1` (boleto Safe2Pay).
+- **Objetivo e cobrança:** via API o Compy não aplica objetivo sozinho (erro "O objetivo para serviço não foi encontrado"). Padrões no código: `codigoObjetivo` = `02` (Prestação de serviço e-commerce) para TOKEN e CARTÃO e `codigoCobranca` = `1` (boleto Safe2Pay).
+- **LEITORA usa outro objetivo:** a leitora é venda de produto, então o pedido vai com o objetivo de **Venda e-commerce** (`codigoObjetivoLeitora`), nunca com o `02`. O código fica em `CODIGO_OBJETIVO_VENDA_ECOMMERCE` (`src/lib/midiaAvulsa.ts`) ou no campo próprio em Configurações; sem ele, a emissão da LEITORA é bloqueada com aviso.
 - **Configurações** (na própria tela, salvas no navegador): preço unitário por item e troca de `codigoObjetivo`/`codigoCobranca`. Use apenas se a API não preencher sozinha. Os preços só são enviados quando todos os itens do produto estão preenchidos. Nesse caso, o total aparece antes do envio e é comparado com o `vTot` e com o valor do título.
 
 ### Limitações conhecidas

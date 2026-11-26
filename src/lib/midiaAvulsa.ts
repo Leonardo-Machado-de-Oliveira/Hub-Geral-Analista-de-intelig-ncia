@@ -122,20 +122,38 @@ export function saveMidiaPrecos(precos: MidiaPrecos): void {
 }
 
 export interface MidiaParams {
+  /** Objetivo de TOKEN e CARTÃO (Prestação de serviço e-commerce). */
   codigoObjetivo: string;
+  /** Objetivo da LEITORA (Venda e-commerce). */
+  codigoObjetivoLeitora: string;
   codigoCobranca: string;
 }
 
 /**
  * Padrões da venda avulsa de mídias. Via API o Compy não aplica objetivo/cobrança
  * sozinho (erro "O objetivo para serviço não foi encontrado").
- * - Objetivo: 02.
+ * - Objetivo TOKEN/CARTÃO: 02 (Prestação de serviço e-commerce).
+ * - Objetivo LEITORA: Venda e-commerce. A leitora é venda de produto, não prestação de
+ *   serviço. Preencha CODIGO_OBJETIVO_VENDA_ECOMMERCE com o código do Compy; enquanto
+ *   estiver vazio, o código deve ser informado em Configurações e a emissão da LEITORA
+ *   fica bloqueada (nunca cai no objetivo 02).
  * - Cobrança: 1 (boleto Safe2Pay, o mesmo da emissão de títulos).
  */
+export const CODIGO_OBJETIVO_VENDA_ECOMMERCE = '';
+
 export const MIDIA_PARAMS_PADRAO: MidiaParams = {
   codigoObjetivo: '02',
+  codigoObjetivoLeitora: CODIGO_OBJETIVO_VENDA_ECOMMERCE,
   codigoCobranca: '1',
 };
+
+/** Objetivo da nota conforme o produto: LEITORA = Venda e-commerce; demais = Prestação de serviço e-commerce. */
+export function getMidiaCodigoObjetivo(produtoId: MidiaProdutoId | '', params: MidiaParams): string {
+  if (produtoId === 'LEITORA') {
+    return (params.codigoObjetivoLeitora ?? '').trim() || MIDIA_PARAMS_PADRAO.codigoObjetivoLeitora;
+  }
+  return params.codigoObjetivo.trim() || MIDIA_PARAMS_PADRAO.codigoObjetivo;
+}
 
 export function loadMidiaParams(): MidiaParams {
   try {
@@ -145,6 +163,7 @@ export function loadMidiaParams(): MidiaParams {
       typeof v === 'string' && v.trim() !== '' ? v.trim() : padrao;
     return {
       codigoObjetivo: pick(obj?.codigoObjetivo, MIDIA_PARAMS_PADRAO.codigoObjetivo),
+      codigoObjetivoLeitora: pick(obj?.codigoObjetivoLeitora, MIDIA_PARAMS_PADRAO.codigoObjetivoLeitora),
       codigoCobranca: pick(obj?.codigoCobranca, MIDIA_PARAMS_PADRAO.codigoCobranca),
     };
   } catch {
@@ -194,6 +213,7 @@ export function calcularComposicao(produto: MidiaProduto, precos: MidiaPrecos): 
 // -------------------------------------------------------------------------
 export interface MidiaPedidoInput {
   xPed: string;
+  produtoId: MidiaProdutoId;
   docInfo: DocValidationResult;
   composicao: MidiaComposicao;
   vencYmd: string;
@@ -210,7 +230,7 @@ export function buildMidiaSavePedidoPayload(inp: MidiaPedidoInput) {
     pedido.cpfFaturamento = inp.docInfo.digits;
   }
   pedido.xPed = inp.xPed;
-  pedido.codigoObjetivo = inp.params.codigoObjetivo.trim() || MIDIA_PARAMS_PADRAO.codigoObjetivo;
+  pedido.codigoObjetivo = getMidiaCodigoObjetivo(inp.produtoId, inp.params);
   pedido.faturar = false;
 
   // Sem preço configurado, vai só código + quantidade: o Compy aplica a tabela de preços dele.
@@ -243,6 +263,7 @@ export function validateMidiaPedido(inp: {
   produto: MidiaProduto | null;
   composicao: MidiaComposicao | null;
   vencYmd: string;
+  params: MidiaParams;
 }): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -260,6 +281,13 @@ export function validateMidiaPedido(inp: {
     for (const i of inp.composicao.itens) {
       if (!Number.isInteger(i.cProd) || i.cProd <= 0) errors.push(`Código de produto inválido: ${i.cProd}.`);
       if (i.qCom !== 1) errors.push(`Quantidade inválida para ${i.nome}.`);
+    }
+    if (!getMidiaCodigoObjetivo(inp.produto.id, inp.params)) {
+      errors.push(
+        inp.produto.id === 'LEITORA'
+          ? 'Informe o codigoObjetivo de Venda e-commerce (LEITORA) em Configurações.'
+          : 'Informe o codigoObjetivo em Configurações.'
+      );
     }
   }
 
