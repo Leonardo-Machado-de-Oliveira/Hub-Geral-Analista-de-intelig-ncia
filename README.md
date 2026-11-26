@@ -164,3 +164,16 @@ O resultado vai para o histórico com o modo "Mídia avulsa · PRODUTO".
 
 - A numeração não tem contador central: dois usuários gerando ao mesmo tempo podem receber o mesmo número. A pré-checagem imediatamente antes do `ws.SavePedido` reduz a janela, mas não a elimina.
 - Não há neuron de busca de cliente; o cliente é identificado pelo CPF/CNPJ.
+
+---
+
+## Numeração sequencial (`src/lib/sequencia.ts`)
+
+Módulo comum que busca o próximo número livre de uma sequência consultando o Compy (`ws.Pedido`): começa no último número usado neste navegador + 1 e pula os que já existem. A pré-checagem antes do `ws.SavePedido` continua protegendo contra uso simultâneo.
+
+| Sequência | Formato | Onde |
+| --- | --- | --- |
+| `SEQ_BOLETO_EXTERNA` | `BoletoExterna01`, `02`, ... `99`, `100` | Gerar boleto (emissão externa) |
+| `SEQ_MIDIA` | `MIDIAAVULSA35409`, ... | Venda avulsa de mídias |
+
+Na emissão externa, o número é buscado ao abrir "Gerar boleto", pelo botão "Gerar outro", e automaticamente depois de cada pedido gravado ou quando a pré-checagem encontra o número já usado. O campo continua editável: um xPed digitado à mão é aceito e não altera a sequência.
