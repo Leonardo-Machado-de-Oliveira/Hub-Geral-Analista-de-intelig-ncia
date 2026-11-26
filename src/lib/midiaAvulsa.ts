@@ -152,16 +152,30 @@ export interface MidiaParams {
   codigoCobranca: string;
 }
 
+/**
+ * Padrões da venda avulsa de mídias. Via API o Compy não aplica objetivo/cobrança
+ * sozinho (erro "O objetivo para serviço não foi encontrado").
+ * - Objetivo "Prestação de Serviço e-commerce": 18 (valor listado pelo Compy; EM TESTE,
+ *   pode ser o ID interno e não o código).
+ * - Cobrança: 1 (boleto Safe2Pay, o mesmo da emissão de títulos).
+ */
+export const MIDIA_PARAMS_PADRAO: MidiaParams = {
+  codigoObjetivo: '18',
+  codigoCobranca: '1',
+};
+
 export function loadMidiaParams(): MidiaParams {
   try {
     const raw = localStorage.getItem(MIDIA_PARAMS_STORAGE_KEY);
     const obj = raw ? JSON.parse(raw) : {};
+    const pick = (v: unknown, padrao: string) =>
+      typeof v === 'string' && v.trim() !== '' ? v.trim() : padrao;
     return {
-      codigoObjetivo: typeof obj?.codigoObjetivo === 'string' ? obj.codigoObjetivo : '',
-      codigoCobranca: typeof obj?.codigoCobranca === 'string' ? obj.codigoCobranca : '',
+      codigoObjetivo: pick(obj?.codigoObjetivo, MIDIA_PARAMS_PADRAO.codigoObjetivo),
+      codigoCobranca: pick(obj?.codigoCobranca, MIDIA_PARAMS_PADRAO.codigoCobranca),
     };
   } catch {
-    return { codigoObjetivo: '', codigoCobranca: '' };
+    return { ...MIDIA_PARAMS_PADRAO };
   }
 }
 
@@ -223,7 +237,7 @@ export function buildMidiaSavePedidoPayload(inp: MidiaPedidoInput) {
     pedido.cpfFaturamento = inp.docInfo.digits;
   }
   pedido.xPed = inp.xPed;
-  if (inp.params.codigoObjetivo.trim()) pedido.codigoObjetivo = inp.params.codigoObjetivo.trim();
+  pedido.codigoObjetivo = inp.params.codigoObjetivo.trim() || MIDIA_PARAMS_PADRAO.codigoObjetivo;
   pedido.faturar = false;
 
   // Sem preço configurado, vai só código + quantidade: o Compy aplica a tabela de preços dele.
@@ -241,7 +255,7 @@ export function buildMidiaSavePedidoPayload(inp: MidiaPedidoInput) {
     dVenc: formatDateBR(inp.vencYmd),
     podeEnviarImediatamente: true,
   };
-  if (inp.params.codigoCobranca.trim()) dup.codigoCobranca = inp.params.codigoCobranca.trim();
+  dup.codigoCobranca = inp.params.codigoCobranca.trim() || MIDIA_PARAMS_PADRAO.codigoCobranca;
   pedido.dupList = [dup];
 
   return { pedidoList: [pedido], sincrono: true };

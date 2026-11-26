@@ -350,7 +350,7 @@ export function MidiaAvulsaPage({
               onClick={() => setShowAvancado((v) => !v)}
               className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-slate-700 cursor-pointer"
             >
-              Configurações opcionais (só se o Compy não preencher via API)
+              Configurações (objetivo 18 · cobrança 1 · preços opcionais)
               {showAvancado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
             {showAvancado && (
@@ -387,7 +387,7 @@ export function MidiaAvulsaPage({
                       value={params.codigoObjetivo}
                       onChange={(e) => handleParamChange('codigoObjetivo', e.target.value)}
                       disabled={isRunning}
-                      placeholder="Padrão do Compy"
+                      placeholder="18 (Prestação de Serviço e-commerce)"
                       className={`${inputCls} font-mono`}
                     />
                   </label>
@@ -398,7 +398,7 @@ export function MidiaAvulsaPage({
                       value={params.codigoCobranca}
                       onChange={(e) => handleParamChange('codigoCobranca', e.target.value)}
                       disabled={isRunning}
-                      placeholder="Padrão do Compy"
+                      placeholder="1 (Boleto Safe2Pay)"
                       className={`${inputCls} font-mono`}
                     />
                   </label>
