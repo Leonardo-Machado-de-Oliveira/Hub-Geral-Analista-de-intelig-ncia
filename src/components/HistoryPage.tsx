@@ -21,7 +21,7 @@ export function HistoryPage({
 }: HistoryPageProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | OperationStatus>('all');
-  const [modeFilter, setModeFilter] = useState<'all' | 'criar_e_buscar' | 'so_consultar_titulo'>('all');
+  const [modeFilter, setModeFilter] = useState<'all' | 'criar_e_buscar' | 'so_consultar_titulo' | 'midia_avulsa'>('all');
   const [confirmClear, setConfirmClear] = useState(false);
 
   const filtered = useMemo(() => {
@@ -89,6 +89,7 @@ export function HistoryPage({
             <option value="all">Todos os tipos</option>
             <option value="criar_e_buscar">Gerar boleto</option>
             <option value="so_consultar_titulo">Consultar título</option>
+            <option value="midia_avulsa">Mídia avulsa</option>
           </select>
         </div>
 
@@ -176,7 +177,9 @@ export function HistoryPage({
                       ? 'Consultar título'
                       : item.mode === 'criar_e_buscar'
                         ? 'Gerar boleto'
-                        : 'Operação';
+                        : item.mode === 'midia_avulsa'
+                          ? `Mídia avulsa${item.produto ? ` · ${item.produto}` : ''}`
+                          : 'Operação';
 
                   return (
                     <tr

@@ -2,6 +2,7 @@ export type NavSection =
   | 'overview'
   | 'generate'
   | 'query'
+  | 'midia_avulsa'
   | 'bulk_valor'
   | 'bulk_cnpj'
   | 'history'
@@ -87,7 +88,7 @@ export interface CallTrace {
 }
 
 export type OperationStatus = 'sucesso' | 'parcial' | 'erro';
-export type OperationMode = 'criar_e_buscar' | 'so_consultar_titulo';
+export type OperationMode = 'criar_e_buscar' | 'so_consultar_titulo' | 'midia_avulsa';
 
 export interface ExecutionResult {
   status: OperationStatus;
@@ -112,6 +113,8 @@ export interface ExecutionRecord {
   docDigits?: string;
   vencYmd?: string;
   valorEnviado: number;
+  /** Produto da venda avulsa de mídias (TOKEN, CARTÃO, LEITORA). */
+  produto?: string;
   steps: ExecutionStep[];
   calls: CallTrace[];
   result: ExecutionResult | null;
@@ -126,6 +129,7 @@ export interface HistoryEntry {
   clienteMasked?: string;
   vencYmd?: string;
   valorDisplay: string;
+  produto?: string;
   durationMs?: number;
   status: OperationStatus;
   boletoLink: string | null;

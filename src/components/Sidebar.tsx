@@ -4,6 +4,7 @@ import {
   Building2,
   FilePlus2,
   History,
+  Package,
   LayoutDashboard,
   PencilLine,
   Search,
@@ -42,6 +43,7 @@ const NAV_ITEMS: Array<{
   { id: 'query', label: 'Consultar título', icon: Search, group: 'monitor' },
   { id: 'history', label: 'Histórico de operações', icon: History, group: 'monitor' },
   { id: 'diagnostics', label: 'Diagnósticos e logs', icon: Activity, group: 'monitor' },
+  { id: 'midia_avulsa', label: 'Venda avulsa de mídias', icon: Package, group: 'solucoes' },
   { id: 'bulk_valor', label: 'Alterar valores em massa', icon: PencilLine, group: 'solucoes' },
   { id: 'bulk_cnpj', label: 'Alterar CNPJ em massa', icon: Building2, group: 'solucoes' },
 ];
