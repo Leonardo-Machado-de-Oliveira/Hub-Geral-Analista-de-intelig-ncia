@@ -121,3 +121,45 @@ Ao final, é possível baixar `disparos-<fluxo>-<batchId>.json`, com um registro
 - Valores > 0 (aceita formato BR `1.234,56`).
 - CNPJ com 14 dígitos e dígito verificador válido.
 - A execução só habilita após a confirmação explícita do checkbox.
+
+---
+
+## Venda avulsa de mídias (`midia_avulsa`)
+
+Tela no grupo **Soluções via API** que gera pedido MIDIAAVULSA e boleto para TOKEN, CARTÃO ou LEITORA.
+
+### Arquivos
+
+- **Novo** `src/lib/midiaAvulsa.ts`: catálogo de produtos, numeração MIDIAAVULSA, preços e parâmetros opcionais, payload e validação.
+- **Novo** `src/components/MidiaAvulsaPage.tsx`: tela do módulo.
+- **Alterados:** `src/App.tsx` (o fluxo de criação virou `runCreateFlowCore(override?)`; sem argumento, a emissão de títulos funciona como antes), `src/types/compy.ts` (`NavSection`/`OperationMode` com `midia_avulsa`, campo `produto` na execução e no histórico), `Sidebar.tsx`, `TopBar.tsx`, `HistoryPage.tsx`, `OverviewPage.tsx` (rótulos e filtro).
+- Sem rota nova no Express e sem dependência nova.
+
+### Composição (regra de negócio, 1 UN por item)
+
+| Produto | Itens (cProd) |
+| --- | --- |
+| TOKEN | Token (5010231) + Middleware Token (5010302) |
+| CARTÃO | Cartão (3689) + Middleware Cartão (5010301) |
+| LEITORA | Leitora (501022) |
+
+### Fluxo (reaproveita a emissão de títulos)
+
+1. **Número:** ao abrir a tela, `ws.Pedido` sonda `MIDIAAVULSA<n>` a partir do último número conhecido + 1 (inicial: 35408) e pula os que já existem no Compy. O último número usado fica no `localStorage` (`safetitulo_midia_ultimo_v1`).
+2. **Validação local:** número gerado, CPF/CNPJ válido, produto e composição, vencimento entre hoje e +10 dias (mesma regra da emissão de títulos).
+3. **Pré-checagem `ws.Pedido`:** se o número tiver sido usado por outra pessoa nesse meio-tempo, o `ws.SavePedido` não é enviado.
+4. **`ws.SavePedido`:** cliente (`cnpj`/`cnpjFaturamento` ou `cpf`/`cpfFaturamento`), `xPed`, `prodList` e `dupList` com `dVenc` (dd/mm/aaaa).
+5. **Conferência `ws.Pedido`:** lê o `vTot` gravado.
+6. **`ws.Titulo`:** busca o boleto.
+
+O resultado vai para o histórico com o modo "Mídia avulsa · PRODUTO".
+
+### Preço, objetivo e cobrança
+
+- **Padrão:** o pedido vai só com `cProd` e `qCom`, e o Compy aplica a própria tabela de preços (como na tela manual). O valor aparece na conferência.
+- **Configurações opcionais** (na própria tela, salvas no navegador): preço unitário por item, `codigoObjetivo` e `codigoCobranca`. Use apenas se a API não preencher sozinha. Os preços só são enviados quando todos os itens do produto estão preenchidos. Nesse caso, o total aparece antes do envio e é comparado com o `vTot` e com o valor do título.
+
+### Limitações conhecidas
+
+- A numeração não tem contador central: dois usuários gerando ao mesmo tempo podem receber o mesmo número. A pré-checagem imediatamente antes do `ws.SavePedido` reduz a janela, mas não a elimina.
+- Não há neuron de busca de cliente; o cliente é identificado pelo CPF/CNPJ.

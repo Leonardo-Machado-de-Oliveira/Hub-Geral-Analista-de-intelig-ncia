@@ -9,6 +9,7 @@ import type {
   FormInputs,
   HistoryEntry,
   NavSection,
+  OperationMode,
   StepState,
   ToastItem,
 } from '@/src/types/compy';
@@ -50,12 +51,26 @@ import { TopBar } from '@/src/components/TopBar';
 import { OverviewPage } from '@/src/components/OverviewPage';
 import { OrderOperationPage, type FormStateValues } from '@/src/components/OrderOperationPage';
 import { BulkCorrectionPage } from '@/src/components/BulkCorrectionPage';
+import { MidiaAvulsaPage } from '@/src/components/MidiaAvulsaPage';
 import { HistoryPage } from '@/src/components/HistoryPage';
 import { DiagnosticsPage } from '@/src/components/DiagnosticsPage';
 import { OperationDetailsDrawer } from '@/src/components/OperationDetailsDrawer';
 import { ConfigModal } from '@/src/components/ConfigModal';
 import { PayloadModal } from '@/src/components/PayloadModal';
 import { ToastContainer } from '@/src/components/ToastContainer';
+
+/** Parâmetros para reaproveitar o fluxo de criação de pedido + título em outros módulos. */
+export interface CreateFlowOverride {
+  mode: OperationMode;
+  inp: FormInputs;
+  savePayload: Record<string, unknown>;
+  /** Valor total esperado; null quando o preço é definido pelo Compy. */
+  valorEsperado: number | null;
+  produto?: string;
+  validate: () => { ok: boolean; errors: string[] };
+  /** Chamado quando o pedido foi gravado e conferido (para avançar a numeração). */
+  onPedidoGravado?: () => void;
+}
 
 function getInitialVencYmd(): string {
   const d = getTodayLocalMidnight();
@@ -276,22 +291,29 @@ export default function App() {
   }, [notify]);
 
   // Execution state helpers
-  const runCreateAndFetchFlow = useCallback(async () => {
+  /**
+   * Fluxo de criação de pedido + título. Sem `override`, é a emissão de títulos
+   * original (formulário "Gerar boleto"). Com `override`, outro módulo (ex.: mídias
+   * avulsas) fornece o próprio payload, validação e valor esperado, reaproveitando
+   * pré-checagem, conferência, consulta de título, stepper e histórico.
+   */
+  const runCreateFlowCore = useCallback(async (override?: CreateFlowOverride) => {
     if (isRunning) return;
-    setFieldErrors({});
-    const inp = toFormInputs(formValues);
+    if (!override) setFieldErrors({});
+    const inp = override ? override.inp : toFormInputs(formValues);
     const cfg = loadConfig();
 
     const startedMs = performance.now();
     let execRecord: ExecutionRecord = {
       id: `EXEC-${Date.now()}`,
-      mode: 'criar_e_buscar',
+      mode: override ? override.mode : 'criar_e_buscar',
       startedAt: new Date().toISOString(),
       finishedAt: null,
       xPed: inp.xPed,
       docDigits: inp.docInfo.digits || undefined,
       vencYmd: inp.vencYmd || undefined,
-      valorEnviado: inp.valorNum,
+      valorEnviado: override ? (override.valorEsperado ?? NaN) : inp.valorNum,
+      produto: override?.produto,
       steps: STEP_LABELS.map((label) => ({
         label,
         state: 'pendente' as StepState,
@@ -346,6 +368,7 @@ export default function App() {
           valorDisplay: Number.isFinite(finalExec.valorEnviado)
             ? formatCurrencyBR(finalExec.valorEnviado)
             : result.vTotDisplay || '--',
+          produto: finalExec.produto,
           durationMs,
           status: result.status,
           boletoLink: result.boletoLink || null,
@@ -359,9 +382,9 @@ export default function App() {
 
     // 1. Validação local
     setStep(0, 'rodando', 'Validando campos...');
-    const valRes = validateFormForCreate(inp);
+    const valRes = override ? override.validate() : validateFormForCreate(inp);
     if (!valRes.ok) {
-      setFieldErrors(valRes.fieldErrors);
+      if (!override) setFieldErrors((valRes as ReturnType<typeof validateFormForCreate>).fieldErrors);
       setStep(0, 'erro', valRes.errors[0]);
       setStep(1, 'pulado', 'Não executado');
       setStep(2, 'pulado', 'Não executado');
@@ -387,7 +410,11 @@ export default function App() {
     abortControllerRef.current = controller;
     setIsRunning(true);
 
-    const valorEnviado = Number(inp.valorNum.toFixed(2));
+    // Na venda de mídias com preço definido pelo Compy, o valor esperado é desconhecido (NaN)
+    // e as checagens de divergência de valor são puladas.
+    const valorEnviado = override
+      ? (override.valorEsperado !== null ? Number(override.valorEsperado.toFixed(2)) : NaN)
+      : Number(inp.valorNum.toFixed(2));
     const warnings: string[] = [];
     let pedidoConfirmado = false;
     let vTotDisplay = '--';
@@ -449,7 +476,7 @@ export default function App() {
 
       // 3. ws.SavePedido
       setStep(2, 'rodando', 'Enviando pedido ao Compy...');
-      const savePayload = buildSavePedidoPayload(inp);
+      const savePayload = override ? override.savePayload : buildSavePedidoPayload(inp);
       const saveTrace = await callCompy(
         cfg,
         'ws.SavePedido',
@@ -565,7 +592,11 @@ export default function App() {
       const vTotNum = parseNumericField(rawVTot);
       if (Number.isFinite(vTotNum)) {
         vTotDisplay = formatCurrencyBR(vTotNum);
-        if (Math.abs(vTotNum - valorEnviado) > 0.01) {
+        if (!Number.isFinite(valorEnviado)) {
+          // Valor definido pelo Compy: registra o vTot conferido como valor da operação.
+          syncExec({ ...execRecord, valorEnviado: vTotNum });
+          setStep(3, 'ok', `Confirmado (${vTotDisplay}, preço do Compy)`);
+        } else if (Math.abs(vTotNum - valorEnviado) > 0.01) {
           const w = `Divergência de valor na conferência: enviado ${formatCurrencyBR(valorEnviado)}, vTot no Compy ${vTotDisplay}.`;
           warnings.push(w);
           setStep(3, 'aviso', 'Confirmado com divergência em vTot');
@@ -607,7 +638,8 @@ export default function App() {
 
         // Erro não recuperável no ws.Titulo
         setStep(4, 'erro', titInterp.msg);
-        setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
+        if (override) override.onPedidoGravado?.();
+        else setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
         finalize(
           {
             status: 'parcial',
@@ -625,7 +657,8 @@ export default function App() {
       }
 
       // Gerar automaticamente um xPed novo no campo após pedido criado com sucesso
-      setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
+      if (override) override.onPedidoGravado?.();
+      else setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
 
       if (!tituloData) {
         setStep(4, 'aviso', 'Título ainda não apareceu');
@@ -657,9 +690,14 @@ export default function App() {
       }
       const rawTitVal = tituloData.valor !== undefined ? tituloData.valor : tituloData.Valor;
       const titValNum = parseNumericField(rawTitVal);
-      if (Number.isFinite(titValNum) && Math.abs(titValNum - valorEnviado) > 0.01) {
+      const valorReferencia = Number.isFinite(valorEnviado) ? valorEnviado : vTotNum;
+      if (
+        Number.isFinite(titValNum) &&
+        Number.isFinite(valorReferencia) &&
+        Math.abs(titValNum - valorReferencia) > 0.01
+      ) {
         warnings.push(
-          `Divergência de valor no título: pedido ${formatCurrencyBR(valorEnviado)}, título ${formatCurrencyBR(titValNum)}.`
+          `Divergência de valor no título: pedido ${formatCurrencyBR(valorReferencia)}, título ${formatCurrencyBR(titValNum)}.`
         );
       }
 
@@ -745,6 +783,9 @@ export default function App() {
       abortControllerRef.current = null;
     }
   }, [formValues, isRunning, toFormInputs]);
+
+  // Mantém a assinatura original para o botão "Gerar boleto" (não repassa o evento de clique).
+  const runCreateAndFetchFlow = useCallback(() => runCreateFlowCore(), [runCreateFlowCore]);
 
   const runQueryOnlyFlow = useCallback(async () => {
     if (isRunning) return;
@@ -1152,7 +1193,7 @@ export default function App() {
               fieldErrors={fieldErrors}
               config={config}
               isRunning={isRunning}
-              currentExecution={currentExecution}
+              currentExecution={currentExecution?.mode === 'midia_avulsa' ? null : currentExecution}
               onChangeField={handleFieldChange}
               onRegenerateXPed={handleRegenerateXPed}
               onSubmitGenerate={runCreateAndFetchFlow}
@@ -1163,6 +1204,20 @@ export default function App() {
               onOpenBoleto={(link) => openBoletoLink(link, notify)}
               onDownloadBoleto={(link, xPed) => downloadBoletoPdf(link, xPed, notify)}
               toFormInputs={toFormInputs}
+            />
+          )}
+
+          {activeSection === 'midia_avulsa' && (
+            <MidiaAvulsaPage
+              config={config}
+              isRunning={isRunning}
+              currentExecution={currentExecution?.mode === 'midia_avulsa' ? currentExecution : null}
+              onSubmit={runCreateFlowCore}
+              onStopExecution={handleStopExecution}
+              onOpenDetails={(exec) => handleOpenDetails(exec)}
+              onOpenBoleto={(link) => openBoletoLink(link, notify)}
+              onDownloadBoleto={(link, xPed) => downloadBoletoPdf(link, xPed, notify)}
+              onNotify={notify}
             />
           )}
 

@@ -341,7 +341,9 @@ export function OverviewPage({
                       ? 'Consultar título'
                       : item.mode === 'criar_e_buscar'
                         ? 'Gerar boleto'
-                        : 'Operação';
+                        : item.mode === 'midia_avulsa'
+                          ? `Mídia avulsa${item.produto ? ` · ${item.produto}` : ''}`
+                          : 'Operação';
 
                   return (
                     <tr key={item.id || `${item.xPed}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
