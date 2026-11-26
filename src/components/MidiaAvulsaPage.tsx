@@ -350,7 +350,7 @@ export function MidiaAvulsaPage({
               onClick={() => setShowAvancado((v) => !v)}
               className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-slate-700 cursor-pointer"
             >
-              Configurações (objetivo C18 · cobrança 1 · preços opcionais)
+              Configurações (objetivo 02 · cobrança 1 · preços opcionais)
               {showAvancado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
             {showAvancado && (
@@ -387,7 +387,7 @@ export function MidiaAvulsaPage({
                       value={params.codigoObjetivo}
                       onChange={(e) => handleParamChange('codigoObjetivo', e.target.value)}
                       disabled={isRunning}
-                      placeholder="C18 (Prestação de Serviço e-commerce)"
+                      placeholder="02 (Prestação de Serviço e-commerce)"
                       className={`${inputCls} font-mono`}
                     />
                   </label>
