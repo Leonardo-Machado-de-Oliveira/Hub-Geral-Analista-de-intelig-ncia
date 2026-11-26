@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG: CompyConfig = {
   endpoint: 'https://erp.safeweb.com.br/compy/app/ws',
   domain: 'safeweb',
   license: '3',
-  user: '1018132',
+  user: '7820163', // UserApp Comercial
   timeoutSec: 30,
   confTentativas: 3,
   titTentativas: 3,
@@ -222,6 +222,9 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // =========================================================================
 // CONFIG STORAGE (localStorage)
 // =========================================================================
+/** Usuários de API substituídos: quem ainda tiver um deles salvo no navegador passa para o padrão atual. */
+const LEGACY_API_USERS = ['1018132'];
+
 export function loadConfig(): CompyConfig {
   try {
     const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
@@ -231,7 +234,10 @@ export function loadConfig(): CompyConfig {
       endpoint: String(parsed.endpoint || DEFAULT_CONFIG.endpoint).trim(),
       domain: String(parsed.domain || DEFAULT_CONFIG.domain).trim(),
       license: String(parsed.license || DEFAULT_CONFIG.license).trim(),
-      user: String(parsed.user || DEFAULT_CONFIG.user).trim(),
+      user: (() => {
+        const u = String(parsed.user || DEFAULT_CONFIG.user).trim();
+        return LEGACY_API_USERS.includes(u) ? DEFAULT_CONFIG.user : u;
+      })(),
       timeoutSec: Math.max(2, Number(parsed.timeoutSec) || DEFAULT_CONFIG.timeoutSec),
       confTentativas: Math.max(1, Number(parsed.confTentativas) || DEFAULT_CONFIG.confTentativas),
       titTentativas: Math.max(1, Number(parsed.titTentativas) || DEFAULT_CONFIG.titTentativas),
