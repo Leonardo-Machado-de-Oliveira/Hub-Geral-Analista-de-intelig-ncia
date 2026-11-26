@@ -155,12 +155,12 @@ export interface MidiaParams {
 /**
  * Padrões da venda avulsa de mídias. Via API o Compy não aplica objetivo/cobrança
  * sozinho (erro "O objetivo para serviço não foi encontrado").
- * - Objetivo "Prestação de Serviço e-commerce": 18 (valor listado pelo Compy; EM TESTE,
- *   pode ser o ID interno e não o código).
+ * - Objetivo "Prestação de Serviço e-commerce": C18 (EM TESTE; o Compy lista o ID 18,
+ *   código segue o padrão C15 da emissão).
  * - Cobrança: 1 (boleto Safe2Pay, o mesmo da emissão de títulos).
  */
 export const MIDIA_PARAMS_PADRAO: MidiaParams = {
-  codigoObjetivo: '18',
+  codigoObjetivo: 'C18',
   codigoCobranca: '1',
 };
 
