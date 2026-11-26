@@ -3,13 +3,13 @@ import {
   callCompy,
   formatCpfCnpj,
   formatCurrencyBR,
-  isValidCNPJ,
   onlyDigits,
   parseValorBR,
+  validateCpfCnpj,
 } from '@/src/lib/compy';
 
 // =========================================================================
-// SOLUÇÕES EM MASSA VIA API — correção de valor e de CNPJ de faturamento
+// CORREÇÃO DE PEDIDOS EM MASSA VIA API — valor e/ou CPF/CNPJ de faturamento
 // Lógica e payloads conforme os logs de referência "disparos-correcao_valor"
 // e "disparos-correcao_cliente".
 // =========================================================================
@@ -26,10 +26,11 @@ const XPED_RE = /^[A-Za-z0-9_\-.+]+$/;
 export interface BulkInputItem {
   line: number;
   xPed: string;
-  /** Preenchido apenas no fluxo correcao:valor (já arredondado a 2 casas). */
+  /** Novo valor total (2 casas), ou null se a linha não altera valor. */
   valorNum: number | null;
-  /** Preenchido apenas no fluxo correcao:cliente (14 dígitos, validado). */
-  cnpjDigits: string | null;
+  /** CPF (11) ou CNPJ (14) de faturamento validado, ou null se a linha não altera o documento. */
+  docDigits: string | null;
+  docType: 'cpf' | 'cnpj' | null;
 }
 
 export interface BulkParseResult {
@@ -40,7 +41,7 @@ export interface BulkParseResult {
 export interface BulkItemResult {
   itemIndex: number;
   xPed: string;
-  status: Extract<OperationStatus, 'sucesso' | 'erro'>;
+  status: OperationStatus;
   message: string;
 }
 
@@ -70,11 +71,23 @@ export interface BulkLogEntry {
 }
 
 // =========================================================================
-// PARSING DA LISTA INFORMADA PELO USUÁRIO
-// Formato por linha: "xPed;valor" (correcao:valor) ou "xPed;CNPJ" (correcao:cliente)
-// Separadores aceitos: ponto e vírgula ou tabulação.
+// PARSING DA LISTA INFORMADA PELO USUÁRIO (formato unificado)
+// Uma linha por pedido: "xPed;valor;CPF/CNPJ"
+//   - separadores aceitos: ponto e vírgula, dois-pontos ou tabulação
+//   - valor e documento são opcionais, mas a linha precisa ter pelo menos um
+// Exemplos:
+//   1000:70;86933914020     → altera valor para 70,00 e CPF de faturamento
+//   1000;70                 → só valor
+//   1000;;05054960000158    → só CNPJ de faturamento
+//   1000;05054960000158     → só CNPJ (11 ou 14 dígitos sem vírgula = documento)
 // =========================================================================
-export function parseBulkInput(text: string, flow: BulkFlowId): BulkParseResult {
+function pareceDocumento(raw: string): boolean {
+  if (raw.includes(',')) return false;
+  const d = onlyDigits(raw);
+  return (d.length === 11 || d.length === 14) && /^[\d.\-/\s]+$/.test(raw);
+}
+
+export function parseBulkInput(text: string): BulkParseResult {
   const items: BulkInputItem[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
@@ -90,39 +103,61 @@ export function parseBulkInput(text: string, flow: BulkFlowId): BulkParseResult 
     if (!line) return;
     const n = idx + 1;
 
-    const parts = line.split(/[;\t]/).map((p) => p.trim());
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      const esperado = flow === 'correcao:valor' ? 'valor' : 'CNPJ';
-      errors.push(`Linha ${n}: use o formato "xPed;${esperado}".`);
+    const parts = line.split(/[;:\t]/).map((p) => p.trim());
+    if (parts.length < 2 || parts.length > 3 || !parts[0]) {
+      errors.push(`Linha ${n}: use o formato "pedido;valor;CPF/CNPJ".`);
       return;
     }
 
-    const [xPed, segundo] = parts;
+    const xPed = parts[0];
+    let valorRaw = '';
+    let docRaw = '';
+    if (parts.length === 3) {
+      valorRaw = parts[1];
+      docRaw = parts[2];
+    } else if (pareceDocumento(parts[1])) {
+      docRaw = parts[1];
+    } else {
+      valorRaw = parts[1];
+    }
+
     if (!XPED_RE.test(xPed)) {
-      errors.push(`Linha ${n}: xPed "${xPed}" contém caracteres inválidos.`);
+      errors.push(`Linha ${n}: pedido "${xPed}" contém caracteres inválidos.`);
       return;
     }
     if (seen.has(xPed)) {
-      errors.push(`Linha ${n}: xPed "${xPed}" está repetido na lista.`);
+      errors.push(`Linha ${n}: pedido "${xPed}" está repetido na lista.`);
       return;
     }
-    seen.add(xPed);
-
-    if (flow === 'correcao:valor') {
-      const valor = parseValorBR(segundo);
-      if (!Number.isFinite(valor) || valor <= 0) {
-        errors.push(`Linha ${n}: valor "${segundo}" inválido (deve ser maior que zero).`);
-        return;
-      }
-      items.push({ line: n, xPed, valorNum: Number(valor.toFixed(2)), cnpjDigits: null });
-    } else {
-      const digits = onlyDigits(segundo);
-      if (digits.length !== 14 || !isValidCNPJ(digits)) {
-        errors.push(`Linha ${n}: CNPJ "${segundo}" inválido.`);
-        return;
-      }
-      items.push({ line: n, xPed, valorNum: null, cnpjDigits: digits });
+    if (!valorRaw && !docRaw) {
+      errors.push(`Linha ${n}: informe o valor, o CPF/CNPJ ou os dois.`);
+      return;
     }
+
+    let valorNum: number | null = null;
+    if (valorRaw) {
+      const v = parseValorBR(valorRaw);
+      if (!Number.isFinite(v) || v <= 0) {
+        errors.push(`Linha ${n}: valor "${valorRaw}" inválido (deve ser maior que zero).`);
+        return;
+      }
+      valorNum = Number(v.toFixed(2));
+    }
+
+    let docDigits: string | null = null;
+    let docType: 'cpf' | 'cnpj' | null = null;
+    if (docRaw) {
+      const doc = validateCpfCnpj(docRaw);
+      if (!doc.valid || !doc.type) {
+        errors.push(`Linha ${n}: CPF/CNPJ "${docRaw}" inválido.`);
+        return;
+      }
+      docDigits = doc.digits;
+      docType = doc.type;
+    }
+
+    seen.add(xPed);
+    items.push({ line: n, xPed, valorNum, docDigits, docType });
   });
 
   if (items.length === 0 && errors.length === 0) {
@@ -212,10 +247,18 @@ export function buildCorrecaoValorPayload(
   return payload;
 }
 
-/** Correção de CNPJ de faturamento: payload parcial, idêntico ao log de referência. */
-export function buildCorrecaoClientePayload(xPed: string, cnpjDigits: string) {
+/**
+ * Correção do documento de faturamento: payload parcial, idêntico ao log de referência
+ * para CNPJ (cnpjFaturamento). Para CPF usa cpfFaturamento (campo documentado do ws.SavePedido).
+ */
+export function buildCorrecaoClientePayload(
+  xPed: string,
+  docDigits: string,
+  docType: 'cpf' | 'cnpj' = 'cnpj'
+) {
+  const campo = docType === 'cpf' ? 'cpfFaturamento' : 'cnpjFaturamento';
   return {
-    pedidoList: [{ xPed: String(xPed), cnpjFaturamento: cnpjDigits }],
+    pedidoList: [{ xPed: String(xPed), [campo]: docDigits }],
     sincrono: true,
   };
 }
@@ -224,7 +267,6 @@ export function buildCorrecaoClientePayload(xPed: string, cnpjDigits: string) {
 // RUNNER EM LOTE (sequencial, uma chamada por vez)
 // =========================================================================
 export interface BulkRunOptions {
-  flow: BulkFlowId;
   items: BulkInputItem[];
   config: CompyConfig;
   signal?: AbortSignal;
@@ -267,6 +309,14 @@ function toLogEntry(
   };
 }
 
+class Interrompido extends Error {}
+
+/**
+ * Processa cada linha em sequência. Por pedido:
+ *  1. se houver valor: ws.Pedido (consulta) + ws.SavePedido (retificação)   [correcao:valor]
+ *  2. se houver CPF/CNPJ: ws.SavePedido (CPF/CNPJ faturamento)              [correcao:cliente]
+ * Se o valor falhar, o documento não é alterado (o pedido fica como estava).
+ */
 export async function runBulkCorrecao(opts: BulkRunOptions): Promise<BulkRunOutput> {
   const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const entries: BulkLogEntry[] = [];
@@ -283,33 +333,27 @@ export async function runBulkCorrecao(opts: BulkRunOptions): Promise<BulkRunOutp
     const item = opts.items[i];
     const itemIndex = i; // índice base 0, como nos logs de referência
     const itemKey = item.xPed;
-    const record = (trace: CallTrace, step: string) =>
-      entries.push(toLogEntry(trace, { flow: opts.flow, batchId, itemIndex, itemKey, step }));
+    const record = (flow: BulkFlowId, trace: CallTrace, step: string) => {
+      entries.push(toLogEntry(trace, { flow, batchId, itemIndex, itemKey, step }));
+      if (trace.isAborted) throw new Interrompido();
+    };
 
-    const erro = (message: string): BulkItemResult => ({ itemIndex, xPed: itemKey, status: 'erro', message });
-    const sucesso = (message: string): BulkItemResult => ({ itemIndex, xPed: itemKey, status: 'sucesso', message });
-
-    let result: BulkItemResult;
+    const feitos: string[] = [];
+    let falha: string | null = null;
 
     try {
-      if (opts.flow === 'correcao:valor') {
-        // 1) ws.Pedido (consulta) — obrigatório antes da retificação
+      // 1) Valor
+      if (item.valorNum !== null) {
         const consulta = await callCompy(opts.config, 'ws.Pedido', 'Consulta do pedido', { xPed: item.xPed }, opts.signal);
-        record(consulta, 'ws.Pedido (consulta)');
+        record('correcao:valor', consulta, 'ws.Pedido (consulta)');
 
-        if (consulta.isAborted) {
-          interrompido = true;
-          result = erro('Interrompido pelo usuário');
-        } else if (consulta.interpretacao.tipo !== 'ok') {
-          result = erro(`Consulta falhou: ${consulta.interpretacao.msg}`);
+        if (consulta.interpretacao.tipo !== 'ok') {
+          falha = `Consulta falhou: ${consulta.interpretacao.msg}`;
         } else {
           const pedido = (consulta.interpretacao.parsed?.dataObj ?? null) as Record<string, unknown> | null;
           const valorAnterior = pedido ? Number(pedido.vTot) : NaN;
+          const payload = buildCorrecaoValorPayload(item.xPed, pedido, item.valorNum);
 
-          // 2) monta a retificação a partir do pedido consultado
-          const payload = buildCorrecaoValorPayload(item.xPed, pedido, item.valorNum as number);
-
-          // 3) ws.SavePedido (retificação)
           const save = await callCompy(
             opts.config,
             'ws.SavePedido',
@@ -317,51 +361,56 @@ export async function runBulkCorrecao(opts: BulkRunOptions): Promise<BulkRunOutp
             { pedidoList: [payload], sincrono: true },
             opts.signal
           );
-          record(save, 'ws.SavePedido (retificação)');
+          record('correcao:valor', save, 'ws.SavePedido (retificação)');
 
-          if (save.isAborted) {
-            interrompido = true;
-            result = erro('Interrompido pelo usuário');
-          } else if (save.interpretacao.tipo !== 'ok') {
-            result = erro(`Retificação falhou: ${save.interpretacao.msg}`);
+          if (save.interpretacao.tipo !== 'ok') {
+            falha = `Retificação do valor falhou: ${save.interpretacao.msg}`;
           } else {
-            result = sucesso(
-              `Valor alterado de ${Number.isFinite(valorAnterior) ? formatCurrencyBR(valorAnterior) : '--'} para ${formatCurrencyBR(item.valorNum)}`
+            feitos.push(
+              `Valor ${Number.isFinite(valorAnterior) ? formatCurrencyBR(valorAnterior) : '--'} → ${formatCurrencyBR(item.valorNum)}`
             );
           }
         }
-      } else {
-        // correcao:cliente — ws.SavePedido (CPF/CNPJ faturamento)
-        const save = await callCompy(
-          opts.config,
-          'ws.SavePedido',
-          'Correção do CNPJ de faturamento',
-          buildCorrecaoClientePayload(item.xPed, item.cnpjDigits as string),
-          opts.signal
-        );
-        record(save, 'ws.SavePedido (CPF/CNPJ faturamento)');
+      }
 
-        if (save.isAborted) {
-          interrompido = true;
-          result = erro('Interrompido pelo usuário');
-        } else if (save.interpretacao.tipo !== 'ok') {
-          result = erro(`Falhou: ${save.interpretacao.msg}`);
+      // 2) CPF/CNPJ de faturamento (só se o valor não falhou)
+      if (item.docDigits !== null && item.docType !== null) {
+        const rotulo = item.docType === 'cpf' ? 'CPF' : 'CNPJ';
+        if (falha) {
+          falha += ` · ${rotulo} não alterado.`;
         } else {
-          result = sucesso(`CNPJ de faturamento alterado para ${formatCpfCnpj(item.cnpjDigits)}`);
+          const save = await callCompy(
+            opts.config,
+            'ws.SavePedido',
+            `Correção do ${rotulo} de faturamento`,
+            buildCorrecaoClientePayload(item.xPed, item.docDigits, item.docType),
+            opts.signal
+          );
+          record('correcao:cliente', save, 'ws.SavePedido (CPF/CNPJ faturamento)');
+
+          if (save.interpretacao.tipo !== 'ok') {
+            falha = `${rotulo} de faturamento falhou: ${save.interpretacao.msg}`;
+          } else {
+            feitos.push(`${rotulo} de faturamento → ${formatCpfCnpj(item.docDigits)}`);
+          }
         }
       }
     } catch (err) {
-      result = erro(err instanceof Error ? err.message : 'Erro inesperado');
+      if (err instanceof Interrompido || (err instanceof Error && err.message === 'USER_ABORT')) {
+        interrompido = true;
+        falha = 'Interrompido pelo usuário';
+      } else {
+        falha = err instanceof Error ? err.message : 'Erro inesperado';
+      }
     }
 
-    if (interrompido && result.message === 'Interrompido pelo usuário') {
-      results.push(result);
-      opts.onProgress?.(results.length, total, result);
-      break;
-    }
+    const status: OperationStatus = !falha ? 'sucesso' : feitos.length > 0 ? 'parcial' : 'erro';
+    const message = [...feitos, ...(falha ? [falha] : [])].join(' · ');
+    const result: BulkItemResult = { itemIndex, xPed: itemKey, status, message };
 
     results.push(result);
     opts.onProgress?.(results.length, total, result);
+    if (interrompido) break;
   }
 
   return { batchId, entries, results, interrompido };

@@ -1273,9 +1273,8 @@ export default function App() {
             />
           )}
 
-          {(activeSection === 'bulk_valor' || activeSection === 'bulk_cnpj') && (
+          {activeSection === 'bulk_correcao' && (
             <BulkCorrectionPage
-              mode={activeSection}
               config={config}
               onNotify={notify}
             />
