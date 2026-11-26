@@ -28,7 +28,6 @@ import {
   formatCpfCnpj,
   formatCurrencyBR,
   formatDateYMD,
-  generateXPed,
   getTodayLocalMidnight,
   isNenhumPedidoEncontrado,
   isNenhumTituloEncontrado,
@@ -52,6 +51,12 @@ import { OverviewPage } from '@/src/components/OverviewPage';
 import { OrderOperationPage, type FormStateValues } from '@/src/components/OrderOperationPage';
 import { BulkCorrectionPage } from '@/src/components/BulkCorrectionPage';
 import { MidiaAvulsaPage } from '@/src/components/MidiaAvulsaPage';
+import {
+  SEQ_BOLETO_EXTERNA,
+  encontrarProximoLivre,
+  parseSequencia,
+  saveUltimo,
+} from '@/src/lib/sequencia';
 import { HistoryPage } from '@/src/components/HistoryPage';
 import { DiagnosticsPage } from '@/src/components/DiagnosticsPage';
 import { OperationDetailsDrawer } from '@/src/components/OperationDetailsDrawer';
@@ -86,7 +91,7 @@ export default function App() {
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
 
   const [formValues, setFormValues] = useState<FormStateValues>(() => ({
-    xPed: generateXPed(),
+    xPed: '', // preenchido com o próximo BoletoExternaNN livre ao abrir "Gerar boleto"
     clienteDoc: '',
     valorRaw: '150,00',
     vencYmd: getInitialVencYmd(),
@@ -208,9 +213,47 @@ export default function App() {
     []
   );
 
+  // Numeração sequencial da emissão externa: BoletoExterna01, 02, ... (próximo livre no Compy)
+  const [gerandoXPed, setGerandoXPed] = useState(false);
+  const [xPedErro, setXPedErro] = useState(false);
+  const xPedAbortRef = useRef<AbortController | null>(null);
+
+  const gerarXPedExterna = useCallback(async () => {
+    xPedAbortRef.current?.abort();
+    const controller = new AbortController();
+    xPedAbortRef.current = controller;
+    setGerandoXPed(true);
+    setXPedErro(false);
+    try {
+      const { xPed } = await encontrarProximoLivre(SEQ_BOLETO_EXTERNA, loadConfig(), controller.signal);
+      setFormValues((prev) => ({ ...prev, xPed }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== 'USER_ABORT') {
+        setXPedErro(true);
+        notify(`Não foi possível gerar o número BoletoExterna: ${msg}`, 'danger');
+      }
+    } finally {
+      if (xPedAbortRef.current === controller) {
+        setGerandoXPed(false);
+        xPedAbortRef.current = null;
+      }
+    }
+  }, [notify]);
+
+  /** Registra o número usado (se for da sequência) e já busca o próximo. */
+  const avancarXPedExterna = useCallback(
+    (xPedUsado: string) => {
+      const n = parseSequencia(SEQ_BOLETO_EXTERNA, xPedUsado);
+      if (n !== null) saveUltimo(SEQ_BOLETO_EXTERNA, n);
+      gerarXPedExterna();
+    },
+    [gerarXPedExterna]
+  );
+
   const handleRegenerateXPed = useCallback(() => {
-    handleFieldChange('xPed', generateXPed());
-  }, [handleFieldChange]);
+    gerarXPedExterna();
+  }, [gerarXPedExterna]);
 
   const handleSelectXPed = useCallback(
     (xPed: string) => {
@@ -438,6 +481,7 @@ export default function App() {
         setStep(1, 'ok', 'xPed disponível (não existe ainda)');
       } else if (preInterp.tipo === 'ok') {
         setStep(1, 'erro', 'Pedido já existe no Compy');
+        if (!override) avancarXPedExterna(inp.xPed);
         setStep(2, 'pulado', 'SavePedido NÃO enviado');
         setStep(3, 'pulado', 'Não executado');
         setStep(4, 'pulado', 'Não executado');
@@ -639,7 +683,7 @@ export default function App() {
         // Erro não recuperável no ws.Titulo
         setStep(4, 'erro', titInterp.msg);
         if (override) override.onPedidoGravado?.();
-        else setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
+        else avancarXPedExterna(inp.xPed);
         finalize(
           {
             status: 'parcial',
@@ -658,7 +702,7 @@ export default function App() {
 
       // Gerar automaticamente um xPed novo no campo após pedido criado com sucesso
       if (override) override.onPedidoGravado?.();
-      else setFormValues((prev) => ({ ...prev, xPed: generateXPed() }));
+      else avancarXPedExterna(inp.xPed);
 
       if (!tituloData) {
         setStep(4, 'aviso', 'Título ainda não apareceu');
@@ -782,7 +826,14 @@ export default function App() {
       setIsRunning(false);
       abortControllerRef.current = null;
     }
-  }, [formValues, isRunning, toFormInputs]);
+  }, [formValues, isRunning, toFormInputs, avancarXPedExterna]);
+
+  // Ao abrir "Gerar boleto" sem número, busca o próximo BoletoExternaNN livre (uma vez; em erro, só pelo botão).
+  useEffect(() => {
+    if (activeSection === 'generate' && !formValues.xPed && !gerandoXPed && !xPedErro && !isRunning) {
+      gerarXPedExterna();
+    }
+  }, [activeSection, formValues.xPed, gerandoXPed, xPedErro, isRunning, gerarXPedExterna]);
 
   // Mantém a assinatura original para o botão "Gerar boleto" (não repassa o evento de clique).
   const runCreateAndFetchFlow = useCallback(() => runCreateFlowCore(), [runCreateFlowCore]);
@@ -1196,6 +1247,7 @@ export default function App() {
               currentExecution={currentExecution?.mode === 'midia_avulsa' ? null : currentExecution}
               onChangeField={handleFieldChange}
               onRegenerateXPed={handleRegenerateXPed}
+              xPedGerando={gerandoXPed}
               onSubmitGenerate={runCreateAndFetchFlow}
               onSubmitQuery={runQueryOnlyFlow}
               onStopExecution={handleStopExecution}

@@ -46,6 +46,8 @@ interface OrderOperationPageProps {
   currentExecution: ExecutionRecord | null;
   onChangeField: <K extends keyof FormStateValues>(key: K, value: FormStateValues[K]) => void;
   onRegenerateXPed: () => void;
+  /** Buscando o próximo BoletoExternaNN livre no Compy. */
+  xPedGerando?: boolean;
   onSubmitGenerate: () => void;
   onSubmitQuery: () => void;
   onStopExecution: () => void;
@@ -65,6 +67,7 @@ export function OrderOperationPage({
   currentExecution,
   onChangeField,
   onRegenerateXPed,
+  xPedGerando = false,
   onSubmitGenerate,
   onSubmitQuery,
   onStopExecution,
@@ -142,7 +145,7 @@ export function OrderOperationPage({
                     required
                     value={formValues.xPed}
                     onChange={(e) => onChangeField('xPed', e.target.value)}
-                    placeholder="PED-20261113-1234"
+                    placeholder={xPedGerando ? 'Gerando número...' : 'BoletoExterna01'}
                     className={`flex-1 rounded-lg border px-3 py-2 font-mono text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 ${
                       fieldErrors.xPed
                         ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
@@ -152,10 +155,11 @@ export function OrderOperationPage({
                   <button
                     type="button"
                     onClick={onRegenerateXPed}
-                    title="Gerar novo xPed"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0 cursor-pointer"
+                    disabled={xPedGerando}
+                    title="Buscar o próximo BoletoExterna livre no Compy"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    {xPedGerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                     Gerar outro
                   </button>
                 </div>

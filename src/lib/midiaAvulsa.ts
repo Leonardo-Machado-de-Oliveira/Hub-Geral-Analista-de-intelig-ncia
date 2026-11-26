@@ -1,11 +1,12 @@
 import type { CompyConfig, DocValidationResult } from '@/src/types/compy';
+import { formatDateBR, getTodayLocalMidnight, parseYMDLocal } from '@/src/lib/compy';
 import {
-  callCompy,
-  formatDateBR,
-  getTodayLocalMidnight,
-  isNenhumPedidoEncontrado,
-  parseYMDLocal,
-} from '@/src/lib/compy';
+  encontrarProximoLivre,
+  formatSequencia,
+  loadUltimo,
+  saveUltimo,
+  type SequenciaDef,
+} from '@/src/lib/sequencia';
 
 // =========================================================================
 // VENDA AVULSA DE MÍDIAS (TOKEN / CARTÃO / LEITORA)
@@ -63,60 +64,33 @@ export const MIDIA_ULTIMO_CONHECIDO = 35408;
 export const MIDIA_ULTIMO_STORAGE_KEY = 'safetitulo_midia_ultimo_v1';
 export const MIDIA_PRECOS_STORAGE_KEY = 'safetitulo_midia_precos_v1';
 export const MIDIA_PARAMS_STORAGE_KEY = 'safetitulo_midia_params_v1';
-const MAX_SONDAGENS = 30;
+
+export const SEQ_MIDIA: SequenciaDef = {
+  prefixo: MIDIA_PREFIXO,
+  storageKey: MIDIA_ULTIMO_STORAGE_KEY,
+  ultimoConhecido: MIDIA_ULTIMO_CONHECIDO,
+  digitos: 1,
+};
 
 export function formatMidiaXPed(numero: number): string {
-  return `${MIDIA_PREFIXO}${numero}`;
+  return formatSequencia(SEQ_MIDIA, numero);
 }
 
 export function loadUltimoMidia(): number {
-  try {
-    const n = Number(localStorage.getItem(MIDIA_ULTIMO_STORAGE_KEY));
-    return Number.isInteger(n) && n > MIDIA_ULTIMO_CONHECIDO ? n : MIDIA_ULTIMO_CONHECIDO;
-  } catch {
-    return MIDIA_ULTIMO_CONHECIDO;
-  }
+  return loadUltimo(SEQ_MIDIA);
 }
 
 export function saveUltimoMidia(numero: number): void {
-  try {
-    if (numero > loadUltimoMidia()) localStorage.setItem(MIDIA_ULTIMO_STORAGE_KEY, String(numero));
-  } catch {
-    // sem persistência local: a sondagem no ERP continua garantindo o próximo número livre
-  }
+  saveUltimo(SEQ_MIDIA, numero);
 }
 
-/**
- * Procura o próximo MIDIAAVULSA livre consultando o ERP (ws.Pedido), a partir do
- * último número conhecido + 1. Números já existentes no Compy são pulados.
- * Observação: não impede que dois usuários peguem o mesmo número ao mesmo tempo;
- * por isso o fluxo de criação refaz a checagem imediatamente antes do ws.SavePedido.
- */
-export async function encontrarProximoMidiaLivre(
+/** Próximo MIDIAAVULSA livre, verificado no Compy (ver encontrarProximoLivre). */
+export function encontrarProximoMidiaLivre(
   config: CompyConfig,
   signal?: AbortSignal,
   onProbe?: (xPed: string) => void
 ): Promise<{ numero: number; xPed: string }> {
-  let numero = loadUltimoMidia() + 1;
-
-  for (let i = 0; i < MAX_SONDAGENS; i++, numero++) {
-    const xPed = formatMidiaXPed(numero);
-    onProbe?.(xPed);
-    const trace = await callCompy(config, 'ws.Pedido', 'Sondagem numeração', { xPed }, signal);
-    if (trace.isAborted) throw new Error('USER_ABORT');
-
-    if (isNenhumPedidoEncontrado(trace.interpretacao)) {
-      return { numero, xPed };
-    }
-    if (trace.interpretacao.tipo === 'ok') {
-      saveUltimoMidia(numero); // já existe no ERP: avança a referência local
-      continue;
-    }
-    throw new Error(`Não foi possível consultar o Compy: ${trace.interpretacao.msg}`);
-  }
-  throw new Error(
-    `Nenhum número livre encontrado após ${MAX_SONDAGENS} tentativas a partir de ${formatMidiaXPed(loadUltimoMidia() + 1)}.`
-  );
+  return encontrarProximoLivre(SEQ_MIDIA, config, signal, onProbe);
 }
 
 // -------------------------------------------------------------------------
